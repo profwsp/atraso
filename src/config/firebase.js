@@ -9,12 +9,13 @@ import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
 // Configuração do Firebase
 // NOTA: Em um ambiente de produção, estas informações devem ser armazenadas em variáveis de ambiente
 const firebaseConfig = {
- apiKey: "SUA_API_KEY",
-  authDomain: "SEU_AUTH_DOMAIN",
-  projectId: "SEU_PROJECT_ID",
-  storageBucket: "SEU_STORAGE_BUCKET",
-  messagingSenderId: "SEU_MESSAGING_SENDER_ID",
-  appId: "SEU_APP_ID"
+  apiKey: "AIzaSyBZhaZFLXo93QcB6MOXhTkkAsnSsYyPTis",
+  authDomain: "suzano-124a4.firebaseapp.com",
+  projectId: "suzano-124a4",
+  storageBucket: "suzano-124a4.appspot.com",
+  messagingSenderId: "162112412626",
+  appId: "1:162112412626:web:d41b30fdd68853df61460b",
+  measurementId: "G-NHNGMJ3M8K"
 };
 
 // Inicializar o Firebase

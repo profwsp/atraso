@@ -1,103 +1,206 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, FlatList } from 'react-native';
-import { Button, TextInput, Title, Card, Paragraph, RadioButton, Text, DataTable } from 'react-native-paper';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, FlatList, Alert } from 'react-native';
+import { Button, TextInput, Title, Card, Paragraph, RadioButton, Text, DataTable, ActivityIndicator, Chip } from 'react-native-paper';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { COLORS } from '../constants/colors';
 import { styles as commonStyles } from '../utils/styles';
-
-// Mock data - replace with actual data fetching and filtering logic
-const mockAllReportsData = [
-  {
-    id: '1', 
-    studentName: 'Ana Beatriz', 
-    studentRegistration: 'MAT67890', 
-    exitDateTime: '14/05/2025 10:30', 
-    reason: 'Consulta Médica', 
-    requester: 'Pais/Responsáveis (Maria Souza)', 
-    liberator: 'Prof. Carlos', 
-    registrar: 'Portaria (José)', 
-    observations: 'Atestado entregue.'
-  },
-  {
-    id: '2', 
-    studentName: 'Carlos Eduardo', 
-    studentRegistration: 'MAT54321', 
-    exitDateTime: '13/05/2025 15:00', 
-    reason: 'Estar se sentindo doente', 
-    requester: 'Próprio Aluno', 
-    liberator: 'Coord. Silva', 
-    registrar: 'Secretaria (Ana)', 
-    observations: ''
-  },
-  // Add more mock data for exits and delays if needed for 'Ambos'
-];
+import { getAllRecords, getDelayRecords, getExitRecords } from '../utils/storage';
 
 const ReportsScreen = () => {
   const navigation = useNavigation();
   const [filterTurma, setFilterTurma] = useState('');
   const [filterCurso, setFilterCurso] = useState('');
-  const [filterPeriodo, setFilterPeriodo] = useState(''); // e.g., 'DD/MM/YYYY - DD/MM/YYYY'
-  const [reportType, setReportType] = useState('Saídas Antecipadas'); // 'Atrasos', 'Saídas Antecipadas', 'Ambos'
+  const [filterPeriodo, setFilterPeriodo] = useState('');
+  const [reportType, setReportType] = useState('Ambos'); // 'Atrasos', 'Saídas Antecipadas', 'Ambos'
   const [generatedReportData, setGeneratedReportData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [allRecords, setAllRecords] = useState([]);
+  const [filteredRecords, setFilteredRecords] = useState([]);
 
-  const handleGenerateReport = () => {
-    console.log('Gerando Relatório com filtros:', { filterTurma, filterCurso, filterPeriodo, reportType });
-    // Implement actual filtering logic based on state
-    // For now, just showing all mock data if type is 'Saídas Antecipadas' or 'Ambos'
-    if (reportType === 'Saídas Antecipadas' || reportType === 'Ambos') {
-      setGeneratedReportData(mockAllReportsData);
-    } else {
-      setGeneratedReportData([]); // Clear for 'Atrasos' as no mock data for it yet
+  // Carregar todos os registros quando a tela receber foco
+  useFocusEffect(
+    React.useCallback(() => {
+      loadAllRecords();
+      return () => {}; // Cleanup function
+    }, [])
+  );
+
+  // Função para carregar todos os registros do armazenamento local
+  const loadAllRecords = async () => {
+    setLoading(true);
+    try {
+      const records = await getAllRecords();
+      setAllRecords(records);
+      setLoading(false);
+    } catch (error) {
+      console.error('Erro ao carregar registros:', error);
+      Alert.alert('Erro', 'Não foi possível carregar os registros.');
+      setLoading(false);
     }
   };
 
+  // Função para formatar data ISO para exibição
+  const formatDate = (isoDate) => {
+    if (!isoDate) return '';
+    const date = new Date(isoDate);
+    return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  };
+
+  // Função para verificar se uma data está dentro de um período
+  const isDateInPeriod = (dateStr, periodStr) => {
+    if (!periodStr || periodStr.trim() === '') return true;
+    
+    try {
+      const date = new Date(dateStr);
+      
+      // Formato esperado: DD/MM - DD/MM
+      const periodParts = periodStr.split('-').map(p => p.trim());
+      if (periodParts.length !== 2) return true;
+      
+      const currentYear = new Date().getFullYear();
+      
+      // Início do período
+      const startParts = periodParts[0].split('/').map(p => parseInt(p, 10));
+      if (startParts.length !== 2) return true;
+      const startDate = new Date(currentYear, startParts[1] - 1, startParts[0]);
+      
+      // Fim do período
+      const endParts = periodParts[1].split('/').map(p => parseInt(p, 10));
+      if (endParts.length !== 2) return true;
+      const endDate = new Date(currentYear, endParts[1] - 1, endParts[0]);
+      endDate.setHours(23, 59, 59, 999); // Fim do dia
+      
+      return date >= startDate && date <= endDate;
+    } catch (error) {
+      console.error('Erro ao verificar período:', error);
+      return true; // Em caso de erro, não filtra
+    }
+  };
+
+  // Função para gerar relatório com filtros
+  const handleGenerateReport = async () => {
+    setLoading(true);
+    
+    try {
+      let records = [];
+      
+      // Obter registros com base no tipo selecionado
+      if (reportType === 'Atrasos') {
+        records = await getDelayRecords();
+      } else if (reportType === 'Saídas Antecipadas') {
+        records = await getExitRecords();
+      } else { // 'Ambos'
+        records = await getAllRecords();
+      }
+      
+      // Aplicar filtros
+      const filtered = records.filter(record => {
+        // Filtro por turma
+        if (filterTurma && !record.studentClass?.toLowerCase().includes(filterTurma.toLowerCase())) {
+          return false;
+        }
+        
+        // Filtro por curso
+        if (filterCurso && !record.studentCourse?.toLowerCase().includes(filterCurso.toLowerCase())) {
+          return false;
+        }
+        
+        // Filtro por período
+        if (filterPeriodo && !isDateInPeriod(record.timestamp, filterPeriodo)) {
+          return false;
+        }
+        
+        return true;
+      });
+      
+      setFilteredRecords(filtered);
+      setGeneratedReportData(filtered);
+      setLoading(false);
+      
+      if (filtered.length === 0) {
+        Alert.alert('Informação', 'Nenhum registro encontrado com os filtros aplicados.');
+      }
+    } catch (error) {
+      console.error('Erro ao gerar relatório:', error);
+      Alert.alert('Erro', 'Não foi possível gerar o relatório.');
+      setLoading(false);
+    }
+  };
+
+  // Função para exportar relatório em CSV
   const handleExportCSV = async () => {
     if (generatedReportData.length === 0) {
-      alert("Sem Dados", "Não há dados para exportar.");
+      Alert.alert('Sem Dados', 'Não há dados para exportar.');
       return;
     }
 
     try {
-      // Create CSV content
-      let csvContent = "Nome,Matrícula,Data e Hora,Motivo,Solicitante,Responsável\n";
+      // Criar conteúdo CSV
+      let csvContent = "ID,Nome,Matrícula,Turma,Curso,Data e Hora,Tipo,Motivo\n";
       
       generatedReportData.forEach(item => {
-        csvContent += `${item.studentName},${item.studentRegistration},${item.exitDateTime},${item.reason},${item.requester},${item.liberator}\n`;
+        const formattedDate = formatDate(item.timestamp);
+        const recordType = item.type === 'delay' ? 'Atraso' : 'Saída Antecipada';
+        csvContent += `${item.id},${item.studentName},${item.studentId},${item.studentClass || ''},${item.studentCourse || ''},${formattedDate},${recordType},${item.reason || ''}\n`;
       });
       
-      // Create a temporary file
-      const fileUri = `${FileSystem.documentDirectory}relatorio_saidas.csv`;
+      // Criar arquivo temporário
+      const fileUri = `${FileSystem.documentDirectory}relatorio_${Date.now()}.csv`;
       await FileSystem.writeAsStringAsync(fileUri, csvContent);
       
-      // Share the file
+      // Compartilhar arquivo
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri);
       } else {
-        alert("Compartilhamento não disponível neste dispositivo");
+        Alert.alert('Informação', 'Compartilhamento não disponível neste dispositivo');
       }
     } catch (error) {
       console.error('Erro ao exportar relatório:', error);
-      alert("Erro ao exportar o relatório");
+      Alert.alert('Erro', 'Não foi possível exportar o relatório.');
     }
   };
 
-  const renderReportItem = ({ item }) => (
-    <DataTable.Row>
-      <DataTable.Cell style={styles.cellSmall}>{`${item.studentName} (${item.studentRegistration})`}</DataTable.Cell>
-      <DataTable.Cell style={styles.cellMedium}>{item.exitDateTime}</DataTable.Cell>
-      <DataTable.Cell style={styles.cellMedium}>{item.reason}</DataTable.Cell>
-      <DataTable.Cell style={styles.cellMedium}>{item.requester}</DataTable.Cell>
-      <DataTable.Cell style={styles.cellSmall}>{item.liberator}</DataTable.Cell>
-    </DataTable.Row>
-  );
+  // Função para limpar filtros
+  const handleClearFilters = () => {
+    setFilterTurma('');
+    setFilterCurso('');
+    setFilterPeriodo('');
+    setReportType('Ambos');
+    setGeneratedReportData([]);
+  };
+
+  // Renderizar item do relatório
+  const renderReportItem = ({ item }) => {
+    const formattedDate = formatDate(item.timestamp);
+    const recordType = item.type === 'delay' ? 'Atraso' : 'Saída Antecipada';
+    
+    return (
+      <DataTable.Row>
+        <DataTable.Cell style={styles.cellSmall}>{item.studentName}</DataTable.Cell>
+        <DataTable.Cell style={styles.cellSmall}>{item.studentId}</DataTable.Cell>
+        <DataTable.Cell style={styles.cellSmall}>{item.studentClass || '-'}</DataTable.Cell>
+        <DataTable.Cell style={styles.cellMedium}>{formattedDate}</DataTable.Cell>
+        <DataTable.Cell style={styles.cellSmall}>{recordType}</DataTable.Cell>
+        <DataTable.Cell style={styles.cellMedium}>{item.reason || '-'}</DataTable.Cell>
+      </DataTable.Row>
+    );
+  };
 
   return (
     <ScrollView style={styles.container}>
       <Card style={styles.card}>
         <Card.Content>
           <Title style={styles.title}>Relatórios de Movimentação</Title>
+          
+          {loading && <ActivityIndicator animating={true} color={COLORS.primary} style={styles.loader} />}
+          
+          <View style={styles.statsContainer}>
+            <Chip icon="information" style={styles.statChip}>Total de Registros: {allRecords.length}</Chip>
+            <Chip icon="clock-alert" style={styles.statChip}>Atrasos: {allRecords.filter(r => r.type === 'delay').length}</Chip>
+            <Chip icon="exit-run" style={styles.statChip}>Saídas: {allRecords.filter(r => r.type === 'exit').length}</Chip>
+          </View>
 
           <TextInput
             label="Filtrar por Turma (Opcional)"
@@ -119,23 +222,39 @@ const ReportsScreen = () => {
             onChangeText={setFilterPeriodo}
             mode="outlined"
             style={styles.input}
+            placeholder="Ex: 01/05 - 19/05"
           />
 
           <Paragraph style={styles.label}>Tipo de Relatório*:</Paragraph>
           <RadioButton.Group onValueChange={newValue => setReportType(newValue)} value={reportType}>
-            <View style={styles.radioItem}><RadioButton value="Atrasos" /><Text>Atrasos</Text></View>
-            <View style={styles.radioItem}><RadioButton value="Saídas Antecipadas" /><Text>Saídas Antecipadas</Text></View>
-            <View style={styles.radioItem}><RadioButton value="Ambos" /><Text>Ambos</Text></View>
+            <View style={styles.radioContainer}>
+              <View style={styles.radioItem}><RadioButton value="Atrasos" /><Text>Atrasos</Text></View>
+              <View style={styles.radioItem}><RadioButton value="Saídas Antecipadas" /><Text>Saídas Antecipadas</Text></View>
+              <View style={styles.radioItem}><RadioButton value="Ambos" /><Text>Ambos</Text></View>
+            </View>
           </RadioButton.Group>
 
-          <Button 
-            mode="contained" 
-            onPress={handleGenerateReport} 
-            style={styles.buttonAction}
-            labelStyle={styles.buttonLabel}
-          >
-            Gerar Relatório
-          </Button>
+          <View style={styles.buttonContainer}>
+            <Button 
+              mode="contained" 
+              onPress={handleGenerateReport} 
+              style={styles.buttonAction}
+              labelStyle={styles.buttonLabel}
+              disabled={loading}
+            >
+              Gerar Relatório
+            </Button>
+            
+            <Button 
+              mode="outlined" 
+              onPress={handleClearFilters} 
+              style={styles.buttonAction}
+              labelStyle={styles.buttonLabel}
+              disabled={loading}
+            >
+              Limpar Filtros
+            </Button>
+          </View>
         </Card.Content>
       </Card>
 
@@ -143,30 +262,37 @@ const ReportsScreen = () => {
         <Card style={styles.reportCard}>
           <Card.Content>
             <Title>Resultados do Relatório ({reportType})</Title>
-            <ScrollView horizontal>
-                <DataTable>
-                    <DataTable.Header>
-                        <DataTable.Title style={styles.cellSmall}>Aluno (Nome e Matrícula)</DataTable.Title>
-                        <DataTable.Title style={styles.cellMedium}>Data e Hora Saída</DataTable.Title>
-                        <DataTable.Title style={styles.cellMedium}>Motivo</DataTable.Title>
-                        <DataTable.Title style={styles.cellMedium}>Solicitante</DataTable.Title>
-                        <DataTable.Title style={styles.cellSmall}>Liberador</DataTable.Title>
-                    </DataTable.Header>
-                    <FlatList
-                        data={generatedReportData}
-                        renderItem={renderReportItem}
-                        keyExtractor={item => item.id}
-                    />
-                </DataTable>
+            <Paragraph>Total de registros encontrados: {generatedReportData.length}</Paragraph>
+            
+            <ScrollView horizontal style={styles.tableContainer}>
+              <DataTable style={styles.dataTable}>
+                <DataTable.Header>
+                  <DataTable.Title style={styles.cellSmall}>Nome</DataTable.Title>
+                  <DataTable.Title style={styles.cellSmall}>Matrícula</DataTable.Title>
+                  <DataTable.Title style={styles.cellSmall}>Turma</DataTable.Title>
+                  <DataTable.Title style={styles.cellMedium}>Data e Hora</DataTable.Title>
+                  <DataTable.Title style={styles.cellSmall}>Tipo</DataTable.Title>
+                  <DataTable.Title style={styles.cellMedium}>Motivo</DataTable.Title>
+                </DataTable.Header>
+                
+                <FlatList
+                  data={generatedReportData}
+                  renderItem={renderReportItem}
+                  keyExtractor={item => item.id}
+                  scrollEnabled={false}
+                />
+              </DataTable>
             </ScrollView>
+            
             <Button 
               mode="outlined" 
               icon="file-export"
               onPress={handleExportCSV} 
               style={styles.buttonAction}
               textColor={COLORS.success}
+              disabled={loading}
             >
-              Exportar Relatório
+              Exportar Relatório (CSV)
             </Button>
           </Card.Content>
         </Card>
@@ -177,18 +303,88 @@ const ReportsScreen = () => {
 
 const styles = StyleSheet.create({
   ...commonStyles,
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  card: {
+    margin: 16,
+    marginBottom: 8,
+    borderRadius: 8,
+  },
   reportCard: {
     marginHorizontal: 16,
     marginBottom: 16,
     elevation: 2,
+    borderRadius: 8,
+  },
+  title: {
+    fontSize: 20,
+    marginBottom: 16,
+  },
+  input: {
+    marginBottom: 12,
+  },
+  label: {
+    marginTop: 8,
+    marginBottom: 8,
+    fontWeight: 'bold',
+  },
+  radioContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  radioItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+    marginBottom: 8,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
   },
   buttonAction: {
     marginVertical: 10,
-    paddingVertical: 8,
+    paddingVertical: 6,
+    flex: 1,
+    marginHorizontal: 4,
   },
-  cellSmall: { width: 150 },
-  cellMedium: { width: 200 },
-  cellLarge: { width: 250 },
+  buttonLabel: {
+    fontSize: 14,
+  },
+  tableContainer: {
+    marginVertical: 16,
+  },
+  dataTable: {
+    minWidth: '100%',
+  },
+  cellSmall: { 
+    width: 120,
+    paddingHorizontal: 8,
+  },
+  cellMedium: { 
+    width: 180,
+    paddingHorizontal: 8,
+  },
+  cellLarge: { 
+    width: 250,
+    paddingHorizontal: 8,
+  },
+  loader: {
+    marginVertical: 16,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  statChip: {
+    marginRight: 8,
+    marginBottom: 8,
+  },
 });
 
 export default ReportsScreen;

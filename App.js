@@ -6,6 +6,13 @@ import { StatusBar } from 'expo-status-bar';
 import { COLORS } from './src/constants/colors';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './src/config/firebase';
+import RegisterDelayScreen from './src/screens/RegisterDelayScreen';
+import ReportsScreen from './src/screens/ReportsScreen';
+import StudentDetailsScreen from './src/screens/StudentDetailsScreen';
+import IdentifyStudentScreen from './src/screens/IdentifyStudentScreen';
+import ConfirmStudentExitScreen from './src/screens/ConfirmStudentExitScreen';
+import ConfirmStudentDelayScreen from './src/screens/ConfirmStudentDelayScreen';
+
 
 // Telas
 import LoginScreen from './src/screens/LoginScreen';
@@ -89,32 +96,32 @@ export default function App() {
               />
               <Stack.Screen 
                 name="IdentifyStudent" 
-                component={PlaceholderScreen} 
+                component={IdentifyStudentScreen} 
                 options={{ title: 'Registrar Saída - Identificar Aluno' }}
               />
               <Stack.Screen 
                 name="ConfirmStudentExit" 
-                component={PlaceholderScreen} 
+                component={ConfirmStudentExitScreen} 
                 options={{ title: 'Registrar Saída - Confirmar' }}
               />
               <Stack.Screen 
                 name="RegisterDelay" 
-                component={PlaceholderScreen} 
+                component={RegisterDelayScreen} 
                 options={{ title: 'Registrar Atraso' }}
               />
               <Stack.Screen 
                 name="ConfirmStudentDelay" 
-                component={PlaceholderScreen} 
+                component={ConfirmStudentDelayScreen} 
                 options={{ title: 'Registrar Atraso - Confirmar' }}
               />
               <Stack.Screen 
                 name="Reports" 
-                component={PlaceholderScreen} 
+                component={ReportsScreen} 
                 options={{ title: 'Relatórios' }}
               />
               <Stack.Screen 
                 name="StudentDetails" 
-                component={PlaceholderScreen} 
+                component={StudentDetailsScreen} 
                 options={{ title: 'Detalhes do Aluno' }}
               />
             </>
